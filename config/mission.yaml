@@ -1,0 +1,15 @@
+# Slalom pomiedzy trzema przeszkodami. Czas t jest liczony od startu misji [s].
+# Wspolrzedne sa w metrach, a yaw w radianach.
+waypoints:
+  - {t: 0.0,  x: 0.0, y: 0.0, z: 0.15, yaw: 0.0}
+  - {t: 5.0,  x: 0.0, y: 0.0, z: 2.00, yaw: 0.0}
+  - {t: 8.0,  x: 0.5, y: 0.0, z: 2.00, yaw: 0.55}
+  - {t: 13.0, x: 1.0, y: 1.5, z: 2.00, yaw: 0.45}
+  - {t: 17.0, x: 2.0, y: 1.5, z: 2.00, yaw: -0.55}
+  - {t: 22.0, x: 2.8, y: 0.0, z: 2.00, yaw: -0.45}
+  - {t: 27.0, x: 4.2, y: 0.0, z: 2.00, yaw: 0.55}
+  - {t: 32.0, x: 5.0, y: 1.5, z: 2.00, yaw: 0.45}
+  - {t: 36.0, x: 6.0, y: 1.5, z: 2.00, yaw: -0.55}
+  - {t: 41.0, x: 6.7, y: 0.0, z: 2.00, yaw: 0.0}
+  - {t: 45.0, x: 6.7, y: 0.0, z: 2.00, yaw: 0.0}
+  - {t: 50.0, x: 6.7, y: 0.0, z: 0.15, yaw: 0.0}

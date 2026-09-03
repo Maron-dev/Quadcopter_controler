@@ -1,0 +1,9 @@
+/quadcopter/motor_allocator:
+  ros__parameters:
+    # F_i = k_f * omega_i^2 [N], M_i = k_m * omega_i^2 [N*m]
+    thrust_coefficient: 8.5e-6
+    torque_coefficient: 1.6e-7
+    arm_x: 0.23
+    arm_y: 0.23
+    min_rotor_speed: 0.0
+    max_rotor_speed: 1100.0

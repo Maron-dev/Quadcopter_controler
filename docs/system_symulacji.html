@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<title>System symulacji quadcoptera w ROS 2 i Gazebo</title>
+<style>
+  @page { size: A4; margin: 18mm 17mm 18mm 17mm; }
+  body { font-family: "Lato", "DejaVu Sans", sans-serif; color: #202631; font-size: 10.5pt; line-height: 1.42; }
+  h1 { color: #123f66; font-size: 25pt; margin: 0 0 8mm; }
+  h2 { color: #12658a; font-size: 17pt; margin-top: 9mm; border-bottom: 1px solid #9bc7d8; padding-bottom: 2mm; }
+  h3 { color: #174d69; font-size: 12.5pt; margin-top: 6mm; }
+  p { margin: 2.2mm 0; }
+  ul, ol { margin: 2mm 0 3mm 7mm; }
+  li { margin: 1.2mm 0; }
+  table { width: 100%; border-collapse: collapse; margin: 4mm 0; font-size: 9.5pt; }
+  th { background: #17698d; color: white; text-align: left; }
+  th, td { border: 1px solid #9aacb5; padding: 2.2mm; vertical-align: top; }
+  tr:nth-child(even) td { background: #eef5f7; }
+  code { font-family: "DejaVu Sans Mono", monospace; background: #edf2f5; padding: 0.3mm 1mm; }
+  pre { font-family: "DejaVu Sans Mono", monospace; background: #17232c; color: #eaf6fa; padding: 4mm; border-radius: 2mm; white-space: pre-wrap; font-size: 8.8pt; }
+  .cover { text-align: center; padding-top: 42mm; page-break-after: always; }
+  .cover .subtitle { font-size: 15pt; color: #47636f; margin-top: 8mm; }
+  .cover .meta { margin-top: 65mm; color: #66757c; }
+  .toc { page-break-after: always; }
+  .toc a { color: #174d69; text-decoration: none; }
+  .box { border-left: 4px solid #19a8c5; background: #edf8fb; padding: 3mm 4mm; margin: 4mm 0; }
+  .warning { border-left-color: #d68b16; background: #fff6e7; }
+  .flow { text-align: center; font-family: "DejaVu Sans Mono", monospace; background: #eef5f7; border: 1px solid #aac4cf; padding: 5mm 2mm; margin: 5mm 0; line-height: 1.65; }
+  .equation { text-align: center; font-family: "DejaVu Serif", serif; font-size: 12pt; margin: 4mm 0; }
+  .page-break { page-break-before: always; }
+  .small { font-size: 8.8pt; color: #596970; }
+</style>
+</head>
+<body>
+
+<section class="cover">
+  <h1>System symulacji quadcoptera</h1>
+  <div class="subtitle">ROS 2 Humble · Gazebo Classic · RViz 2</div>
+  <div class="subtitle">Architektura, sterowanie, model wirników i wizualizacja</div>
+  <div class="meta">Dokumentacja pakietu <b>quadcopter_sim</b><br>28 sierpnia 2026</div>
+</section>
+
+<section class="toc">
+  <h2>Spis treści</h2>
+  <ol>
+    <li><a href="#cel">Cel i zakres symulacji</a></li>
+    <li><a href="#architektura">Architektura całego systemu</a></li>
+    <li><a href="#swiat">Świat Gazebo i model quadcoptera</a></li>
+    <li><a href="#misja">Misja i generator trajektorii</a></li>
+    <li><a href="#regulatory">Regulatory PID, LQR i MPC</a></li>
+    <li><a href="#alokacja">Alokacja sterowania na cztery wirniki</a></li>
+    <li><a href="#silniki">Model silników i wirników</a></li>
+    <li><a href="#petla">Pełna pętla sprzężenia zwrotnego</a></li>
+    <li><a href="#rviz">Gazebo, RViz i porównanie trajektorii</a></li>
+    <li><a href="#uruchamianie">Uruchamianie i diagnostyka</a></li>
+    <li><a href="#ograniczenia">Założenia i ograniczenia modelu</a></li>
+  </ol>
+</section>
+
+<h2 id="cel">1. Cel i zakres symulacji</h2>
+<p>Pakiet <code>quadcopter_sim</code> przedstawia quadcopter wykonujący zadaną misję w środowisku Gazebo. Dron otrzymuje płynnie zmieniającą się pozycję zadaną, porównuje ją ze swoim aktualnym stanem i dobiera prędkości czterech wirników. Gazebo oblicza wynikający z nich ruch bryły sztywnej, grawitację oraz kolizje z przeszkodami.</p>
+<p>Symulacja pozwala porównywać trzy metody regulacji: kaskadowy PID, LQR oraz uproszczony MPC. Dostępne są dwa scenariusze: pierwotny świat oraz rozbudowany tor przeszkód z murem, slalomem, bramą i lądowiskiem.</p>
+
+<div class="box"><b>Najważniejsza własność:</b> sterowanie wykonawcze nie jest już idealną siłą przykładaną bezpośrednio przez regulator. Wymagany ciąg i momenty są rozdzielane na cztery zadane prędkości wirników, a silniki osiągają je z określoną dynamiką.</div>
+
+<h2 id="architektura">2. Architektura całego systemu</h2>
+<div class="flow">
+mission_*.yaml<br>
+↓<br>
+trajectory_node.py ──→ /quadcopter/command/pose<br>
+↓<br>
+PID / LQR / MPC ←── /quadcopter/odom<br>
+↓<br>
+/quadcopter/command/wrench<br>
+↓<br>
+motor_allocator ──→ /quadcopter/command/rotor_speed<br>
+↓<br>
+model silników i wirników w Gazebo<br>
+↓<br>
+siła, momenty, ruch modelu ──→ odometria ──→ regulator
+</div>
+
+<table>
+  <tr><th>Element</th><th>Rola</th><th>Najważniejsze dane</th></tr>
+  <tr><td>Plik misji</td><td>Definiuje waypointy i czasy ich osiągnięcia</td><td>t, x, y, z, yaw</td></tr>
+  <tr><td>Generator trajektorii</td><td>Interpoluje waypointy i publikuje pozycję zadaną</td><td>PoseStamped</td></tr>
+  <tr><td>Regulator</td><td>Minimalizuje błąd położenia i orientacji</td><td>Wymagany ciąg i momenty</td></tr>
+  <tr><td>Alokator</td><td>Rozdziela sterowanie na cztery wirniki</td><td>ωFL, ωFR, ωRL, ωRR</td></tr>
+  <tr><td>Model silników</td><td>Modeluje opóźnienie i aerodynamikę wirników</td><td>Fᵢ = kfωᵢ², Mᵢ = kmωᵢ²</td></tr>
+  <tr><td>Gazebo</td><td>Oblicza dynamikę i kolizje</td><td>Pozycja, orientacja, prędkości</td></tr>
+  <tr><td>RViz</td><td>Porównuje trasę zadaną z rzeczywistą</td><td>nav_msgs/Path</td></tr>
+</table>
+
+<h2 id="swiat">3. Świat Gazebo i model quadcoptera</h2>
+<p>Pliki <code>empty.world</code> i <code>obstacle_course.world</code> opisują podłoże, oświetlenie, przeszkody i parametry fizyki. Krok symulacji wynosi 0,002 s, czyli silnik fizyczny może wykonywać 500 aktualizacji na sekundę.</p>
+<p>Model drona ma masę 1,5 kg i momenty bezwładności:</p>
+<table>
+  <tr><th>Parametr</th><th>Wartość</th><th>Znaczenie</th></tr>
+  <tr><td>m</td><td>1,5 kg</td><td>Masa całkowita</td></tr>
+  <tr><td>Ixx</td><td>0,030 kg·m²</td><td>Bezwładność dla roll</td></tr>
+  <tr><td>Iyy</td><td>0,030 kg·m²</td><td>Bezwładność dla pitch</td></tr>
+  <tr><td>Izz</td><td>0,055 kg·m²</td><td>Bezwładność dla yaw</td></tr>
+  <tr><td>ramię X/Y</td><td>0,23 m</td><td>Odległość wirnika od środka</td></tr>
+</table>
+<p>Plugin <code>gazebo_actuator</code> jest częścią modelu SDF. Odczytuje położenie i prędkości bryły, publikuje odometrię oraz wyznacza siłę i momenty pochodzące od czterech wirników.</p>
+
+<h2 id="misja">4. Misja i generator trajektorii</h2>
+<p>Misja jest listą waypointów. Przykładowy wpis:</p>
+<pre>- {t: 18.0, x: 4.0, y: 1.3, z: 1.8, yaw: 0.0}</pre>
+<p>Oznacza, że w chwili 18 s pozycja referencyjna powinna wynosić (4,0; 1,3; 1,8) m, a zadany yaw 0 rad. Pomiędzy waypointami wykorzystywana jest funkcja smoothstep:</p>
+<div class="equation">s(u) = u²(3 − 2u), &nbsp;&nbsp; 0 ≤ u ≤ 1</div>
+<p>Pozycja zadana jest następnie obliczana jako:</p>
+<div class="equation">p(t) = p₀ + s(u)(p₁ − p₀)</div>
+<p>Dzięki temu prędkość zadana nie zmienia się skokowo na początku i końcu segmentu. Węzeł pracuje z okresem 0,02 s, czyli publikuje pozycję zadaną nominalnie z częstotliwością 50 Hz.</p>
+<table>
+  <tr><th>Temat ROS 2</th><th>Typ</th><th>Przeznaczenie</th></tr>
+  <tr><td>/quadcopter/command/pose</td><td>geometry_msgs/PoseStamped</td><td>Aktualna pozycja i yaw zadane</td></tr>
+  <tr><td>/quadcopter/path/reference</td><td>nav_msgs/Path</td><td>Kompletna trasa referencyjna</td></tr>
+  <tr><td>/quadcopter/path/actual</td><td>nav_msgs/Path</td><td>Historia rzeczywistego ruchu</td></tr>
+</table>
+
+<h2 id="regulatory" class="page-break">5. Regulatory lotu</h2>
+<h3>5.1 Kaskadowy PID</h3>
+<p>PID jest regulatorem domyślnym. Zewnętrzna pętla oblicza błędy położenia:</p>
+<div class="equation">eₓ = xzad − x, &nbsp; eᵧ = yzad − y, &nbsp; e_z = zzad − z</div>
+<p>Dla osi poziomych wyznaczane są żądane przyspieszenia. Następnie przeliczane są one na zadane kąty roll i pitch. Ruch poziomy powstaje przez przechylenie drona: wektor ciągu, normalnie skierowany pionowo względem kadłuba, uzyskuje składową poziomą.</p>
+<p>Wewnętrzna pętla stabilizuje roll, pitch i yaw. Człon proporcjonalny reaguje na aktualny błąd, całkujący usuwa długotrwały uchyb, a różniczkujący tłumi ruch za pomocą informacji o prędkości.</p>
+<div class="equation">u = Kp·e + Ki∫e dt − Kd·v</div>
+<p>Regulator dodaje składnik równoważący ciężar <code>m·g</code> i kompensuje utratę pionowej składowej ciągu podczas przechylenia.</p>
+
+<h3>5.2 LQR</h3>
+<p>LQR wykorzystuje liniowy model dynamiki w otoczeniu zawisu. Sterowanie ma postać:</p>
+<div class="equation">u = −K(x − xref)</div>
+<p>Wektor stanu zawiera błędy położenia, prędkości, kąty i prędkości kątowe. Wzmocnienia K dobierają kompromis pomiędzy szybkim zmniejszaniem błędu a intensywnością sterowania. W tej implementacji są zapisane bezpośrednio w <code>lqr_controller.yaml</code>.</p>
+
+<h3>5.3 MPC</h3>
+<p>MPC korzysta z dyskretnego modelu ruchu i problemu sterowania optymalnego o skończonym horyzoncie. Domyślny horyzont obejmuje 35 kroków po 0,04 s, czyli około 1,4 s przewidywania. Funkcja kosztu karze błędy stanu oraz duże sterowania. Do modelu wysyłane jest pierwsze sterowanie z rozwiązania, po czym obliczenia są powtarzane dla nowego stanu.</p>
+
+<div class="box warning"><b>Wspólny interfejs regulatorów:</b> każdy regulator odbiera tę samą pozycję zadaną i odometrię oraz publikuje wymagany całkowity ciąg i momenty. Dzięki temu model silników nie zależy od wybranej metody regulacji.</div>
+
+<h2 id="alokacja">6. Alokacja sterowania na wirniki</h2>
+<p>Regulator publikuje wirtualne polecenie <code>Wrench</code>:</p>
+<ul>
+  <li>T — całkowity ciąg w niutonach,</li>
+  <li>τx — moment roll w N·m,</li>
+  <li>τy — moment pitch w N·m,</li>
+  <li>τz — moment yaw w N·m.</li>
+</ul>
+<p>Alokator rozwiązuje odwrotne zadanie mieszania. Najpierw wyznacza wymagany ciąg każdego wirnika, a następnie jego prędkość:</p>
+<div class="equation">ωᵢ = √(max(0, Fᵢ) / kf)</div>
+<table>
+  <tr><th>Indeks</th><th>Wirnik</th><th>Kierunek</th><th>Wpływ na moment</th></tr>
+  <tr><td>0</td><td>Front-left (FL)</td><td>CCW</td><td>+roll, −pitch, +yaw</td></tr>
+  <tr><td>1</td><td>Front-right (FR)</td><td>CW</td><td>−roll, −pitch, −yaw</td></tr>
+  <tr><td>2</td><td>Rear-left (RL)</td><td>CW</td><td>+roll, +pitch, −yaw</td></tr>
+  <tr><td>3</td><td>Rear-right (RR)</td><td>CCW</td><td>−roll, +pitch, +yaw</td></tr>
+</table>
+<p>Prędkości są ograniczane do przedziału 0–1100 rad/s. Jeśli wymagany ciąg pojedynczego wirnika wychodzi ujemny, zostaje ustawiony na zero. Jest to prosta alokacja bez zaawansowanego mechanizmu priorytetów i desaturacji.</p>
+
+<h2 id="silniki">7. Model silników i wirników</h2>
+<p>Zadana prędkość nie jest osiągana natychmiast. Dynamikę silnika opisuje człon pierwszego rzędu:</p>
+<div class="equation">dω/dt = (ωzad − ω) / τm</div>
+<p>Stała czasowa τm wynosi 0,06 s. W każdej iteracji Gazebo aktualizuje prędkość wirnika, a następnie oblicza:</p>
+<div class="equation">Fᵢ = kf·ωᵢ², &nbsp;&nbsp; Mᵢ = km·ωᵢ²</div>
+<table>
+  <tr><th>Parametr</th><th>Wartość</th><th>Jednostka</th></tr>
+  <tr><td>kf</td><td>8,5·10⁻⁶</td><td>N/(rad/s)²</td></tr>
+  <tr><td>km</td><td>1,6·10⁻⁷</td><td>N·m/(rad/s)²</td></tr>
+  <tr><td>τm</td><td>0,06</td><td>s</td></tr>
+  <tr><td>ωmax</td><td>1100</td><td>rad/s</td></tr>
+</table>
+<p>Dla poziomego zawisu wymagany jest ciąg równy ciężarowi:</p>
+<div class="equation">T = m·g = 1,5·9,81 ≈ 14,72 N</div>
+<p>Każdy z czterech wirników wytwarza wtedy około 3,68 N, co odpowiada prędkości około 658 rad/s, czyli 6280 obr./min. Maksymalny łączny ciąg modelu wynosi około 41,14 N.</p>
+
+<h2 id="petla">8. Pełna pętla sprzężenia zwrotnego</h2>
+<ol>
+  <li>Generator trajektorii oblicza pozycję zadaną dla bieżącego czasu.</li>
+  <li>Gazebo publikuje aktualny stan drona jako odometrię.</li>
+  <li>Regulator oblicza błędy oraz wymagany ciąg i momenty.</li>
+  <li>Alokator przelicza je na cztery zadane prędkości wirników.</li>
+  <li>Model silników stopniowo zbliża rzeczywiste prędkości do zadanych.</li>
+  <li>Model wirników wyznacza ciągi i momenty aerodynamiczne.</li>
+  <li>Gazebo całkuje równania ruchu i otrzymuje nowy stan.</li>
+  <li>Nowy stan wraca do regulatora; cykl jest powtarzany.</li>
+</ol>
+<p>Jest to układ zamknięty. Zakłócenie, błąd modelu lub opóźnienie silników powodują odchylenie od trajektorii, które regulator próbuje skorygować w następnych iteracjach.</p>
+
+<h2 id="rviz">9. Gazebo i RViz</h2>
+<p>Gazebo przedstawia fizyczny świat, przeszkody i ruch modelu. Turkusowa linia dodana do świata jest bezkolizyjną wizualizacją trajektorii referencyjnej. Nie generuje sił ani kontaktów.</p>
+<p>RViz pokazuje dokładne dane ROS 2:</p>
+<ul>
+  <li>turkusowa linia — pełna trasa referencyjna,</li>
+  <li>czerwona linia — rzeczywista trasa odczytana z odometrii,</li>
+  <li>siatka 50 × 50 m — odniesienie przestrzenne.</li>
+</ul>
+<p>Różnica między liniami obrazuje uchyb śledzenia. Zaokrąglenia czerwonej linii w pobliżu zmian kierunku wynikają z bezwładności, ograniczeń sterowania, dynamiki silników i nastaw regulatora.</p>
+
+<h2 id="uruchamianie" class="page-break">10. Uruchamianie i diagnostyka</h2>
+<h3>Budowanie i uruchomienie</h3>
+<pre>cd /home/marton/Repos/drone_ws
+colcon build --packages-select quadcopter_sim
+source install/setup.bash
+ros2 launch quadcopter_sim simulation.launch.py \
+  scenario:=obstacle_course controller:=pid</pre>
+
+<h3>Wybór regulatora</h3>
+<pre># PID
+controller:=pid
+
+# LQR
+controller:=lqr
+
+# MPC
+controller:=mpc</pre>
+
+<h3>Najważniejsze tematy</h3>
+<table>
+  <tr><th>Polecenie</th><th>Obserwowana wielkość</th></tr>
+  <tr><td>ros2 topic echo /quadcopter/command/pose</td><td>Pozycja zadana</td></tr>
+  <tr><td>ros2 topic echo /quadcopter/odom</td><td>Pozycja, orientacja i prędkości rzeczywiste</td></tr>
+  <tr><td>ros2 topic echo /quadcopter/command/wrench</td><td>Wymagany ciąg i momenty regulatora</td></tr>
+  <tr><td>ros2 topic echo /quadcopter/command/rotor_speed</td><td>Zadane prędkości czterech wirników</td></tr>
+  <tr><td>ros2 topic echo /quadcopter/rotor_speed</td><td>Rzeczywiste prędkości po dynamice silników</td></tr>
+</table>
+
+<h3>Interpretacja diagnostyki</h3>
+<ul>
+  <li>W zawisie wszystkie prędkości powinny być zbliżone do 658 rad/s.</li>
+  <li>Różnica lewa–prawa powoduje roll.</li>
+  <li>Różnica przód–tył powoduje pitch.</li>
+  <li>Różnica par CW–CCW powoduje yaw.</li>
+  <li>Długie utrzymywanie 0 lub 1100 rad/s oznacza nasycenie alokatora.</li>
+  <li>Duża różnica pomiędzy prędkością zadaną i rzeczywistą wskazuje na szybką zmianę polecenia lub opóźnienie silnika.</li>
+</ul>
+
+<h2 id="ograniczenia">11. Założenia i ograniczenia</h2>
+<ul>
+  <li>Model ciągu jest kwadratowy i nie uwzględnia przepływu postępowego ani efektu podłoża.</li>
+  <li>Nie jest modelowana aerodynamika śmigła zależna od jego geometrii.</li>
+  <li>Nie ma modelu elektrycznego akumulatora, ESC, napięcia, prądu i spadku napięcia.</li>
+  <li>Prędkość wirnika jest sterowaniem wykonawczym; napięcie nie jest jeszcze sygnałem wejściowym.</li>
+  <li>Siły czterech wirników są sumowane i przykładane do bryły jako równoważna siła oraz momenty.</li>
+  <li>Alokator stosuje proste obcięcie wartości zamiast optymalnej alokacji przy nasyceniu.</li>
+  <li>Regulatory korzystają z idealnej odometrii Gazebo bez szumu czujników i estymatora stanu.</li>
+</ul>
+<div class="box"><b>Możliwy następny etap:</b> model elektryczny może przekształcać napięcie PWM/ESC na prąd i moment silnika, uwzględniając rezystancję, stałą SEM, bezwładność wirnika oraz napięcie akumulatora. Wtedy bezpośrednim sygnałem sterującym byłoby napięcie lub wypełnienie PWM.</div>
+
+<h2>12. Pliki źródłowe</h2>
+<table>
+  <tr><th>Plik</th><th>Odpowiedzialność</th></tr>
+  <tr><td>launch/simulation.launch.py</td><td>Uruchamianie świata, misji, regulatora, alokatora i RViz</td></tr>
+  <tr><td>scripts/trajectory_node.py</td><td>Interpolacja misji i publikowanie ścieżek</td></tr>
+  <tr><td>src/quadcopter_controller.cpp</td><td>Kaskadowy PID</td></tr>
+  <tr><td>src/lqr_controller.cpp</td><td>Regulator LQR</td></tr>
+  <tr><td>src/mpc_controller.cpp</td><td>Regulator MPC</td></tr>
+  <tr><td>src/motor_allocator.cpp</td><td>Mieszanie ciągu i momentów na prędkości wirników</td></tr>
+  <tr><td>src/gazebo_actuator.cpp</td><td>Dynamika silników, siły wirników i odometria</td></tr>
+  <tr><td>models/quadcopter/model.sdf</td><td>Masa, bezwładność, geometria i parametry napędu</td></tr>
+  <tr><td>config/*.yaml</td><td>Nastawy regulatorów, misje i model silników</td></tr>
+  <tr><td>worlds/*.world</td><td>Światy i przeszkody Gazebo</td></tr>
+</table>
+
+<p class="small">Dokument opisuje stan implementacji pakietu quadcopter_sim z dnia 28.08.2026.</p>
+</body>
+</html>

@@ -1,0 +1,27 @@
+/quadcopter/controller:
+  ros__parameters:
+    mass: 1.5
+    gravity: 9.81
+    ixx: 0.030
+    iyy: 0.030
+    izz: 0.055
+    prediction_dt: 0.04
+    horizon: 35
+    terminal_scale: 8.0
+    max_thrust: 32.0
+    max_torque_xy: 5.0
+    max_torque_z: 2.0
+    q_xy:
+      position: 2.0
+      velocity: 2.0
+      angle: 20.0
+      rate: 2.0
+    q_z:
+      position: 10.0
+      velocity: 4.0
+    q_yaw:
+      angle: 5.0
+      rate: 1.0
+    r_xy: 5.0
+    r_z: 1.0
+    r_yaw: 2.0

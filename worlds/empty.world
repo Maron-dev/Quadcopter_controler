@@ -1,0 +1,35 @@
+<?xml version="1.0"?>
+<sdf version="1.6">
+  <world name="quadcopter_world">
+    <include><uri>model://sun</uri></include>
+    <include><uri>model://ground_plane</uri></include>
+    <physics name="physics" type="ode"><max_step_size>0.002</max_step_size><real_time_update_rate>500</real_time_update_rate></physics>
+    <model name="obstacle_1">
+      <static>true</static><pose>1.5 0 1.4 0 0 0</pose>
+      <link name="link">
+        <collision name="collision"><geometry><box><size>0.5 1.8 2.8</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>0.5 1.8 2.8</size></box></geometry>
+          <material><ambient>0.75 0.12 0.08 1</ambient><diffuse>0.90 0.18 0.10 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+    <model name="obstacle_2">
+      <static>true</static><pose>3.5 1.6 1.4 0 0 0</pose>
+      <link name="link">
+        <collision name="collision"><geometry><box><size>0.5 1.8 2.8</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>0.5 1.8 2.8</size></box></geometry>
+          <material><ambient>0.90 0.48 0.05 1</ambient><diffuse>1.00 0.58 0.08 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+    <model name="obstacle_3">
+      <static>true</static><pose>5.5 0 1.4 0 0 0</pose>
+      <link name="link">
+        <collision name="collision"><geometry><box><size>0.5 1.8 2.8</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>0.5 1.8 2.8</size></box></geometry>
+          <material><ambient>0.50 0.08 0.72 1</ambient><diffuse>0.62 0.12 0.88 1</diffuse></material>
+        </visual>
+      </link>
+    </model>
+  </world>
+</sdf>
