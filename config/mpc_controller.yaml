@@ -8,9 +8,15 @@
     prediction_dt: 0.04
     horizon: 35
     terminal_scale: 8.0
-    max_thrust: 32.0
-    max_torque_xy: 5.0
-    max_torque_z: 2.0
+    # Must match the Gazebo actuator in models/quadcopter/model.sdf.
+    thrust_coefficient: 8.5e-6
+    torque_coefficient: 1.6e-7
+    arm_x: 0.23
+    arm_y: 0.23
+    motor_time_constant: 0.06
+    max_rotor_speed: 1100.0
+    solver_iterations: 12
+    gradient_tolerance: 0.001
     q_xy:
       position: 2.0
       velocity: 2.0

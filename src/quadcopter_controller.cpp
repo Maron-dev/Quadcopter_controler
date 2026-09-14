@@ -1,13 +1,14 @@
-#include <algorithm>
+#include <algorithm>//Dzieki niej mozemy uzyc funkcji std::clamp, ktora ogranicza wartosc do okreslonego zakresu
 #include <cmath>
 #include <memory>
 #include <string>
 
-#include <geometry_msgs/msg/pose_stamped.hpp>
-#include <geometry_msgs/msg/wrench.hpp>
+#include <geometry_msgs/msg/pose_stamped.hpp> //Zadana pozycja i orientacja
+#include <geometry_msgs/msg/wrench.hpp> //
 #include <nav_msgs/msg/odometry.hpp>
 #include <rclcpp/rclcpp.hpp>
 
+//Przestrzeń nazw zapobiega konfliktom z klasami o takich samych nazwach w innych częsciach programu. W tym przypadku, wszystkie klasy i struktury związane z symulatorem quadcoptera są umieszczone w przestrzeni nazw "quadcopter_sim".
 namespace quadcopter_sim
 {
 struct Gains
@@ -22,26 +23,33 @@ class QuadcopterController : public rclcpp::Node
 public:
   QuadcopterController() : Node("controller")
   {
+    //Definujemy parametry kontrolera, takie jak masa, grawitacja, maksymalny kąt przechylenia, maksymalny ciąg i maksymalny moment obrotowy. Parametry te są deklarowane jako parametry węzła ROS 2, co pozwala na ich łatwe dostosowanie w czasie działania programu.
     mass_ = declare_parameter("mass", 1.5);
     gravity_ = declare_parameter("gravity", 9.81);
     max_tilt_ = declare_parameter("max_tilt", 0.52);
     max_thrust_ = declare_parameter("max_thrust", 32.0);
     max_torque_xy_ = declare_parameter("max_torque_xy", 5.0);
-    
     max_torque_z_ = declare_parameter("max_torque_z", 2.0);
-    xy_ = gains("xy", {1.15, 0.02, 1.35});
-    z_ = gains("z", {5.0, 0.65, 3.1});
-    attitude_ = gains("attitude", {7.0, 0.03, 2.4});
-    yaw_ = gains("yaw", {3.0, 0.02, 0.9});
 
+    //Nastawy regulatorów PIDÓw
+    xy_ = gains("xy", {1.15, 0.02, 1.35});//Regulacja położenia w osiach x i y
+    z_ = gains("z", {5.0, 0.65, 3.1});  //Regulacja położenia w osi z
+    attitude_ = gains("attitude", {7.0, 0.03, 2.4});  //regulacja kątów roll i pitch
+    yaw_ = gains("yaw", {3.0, 0.02, 0.9});  //regulacja kąta yaw
+
+    
+    //Tworzymy publisher do wysyłania komend siły i momentu obrotowego (wrench) oraz subskrybujemy się na temat docelowej pozycji (pose) i odometrii (odom). W callbacku dla docelowej pozycji zapisujemy otrzymaną wartość, a w callbacku dla odometrii wywołujemy funkcję on_odometry, która oblicza i publikuje komendy sterujące.
     wrench_pub_ = create_publisher<geometry_msgs::msg::Wrench>("command/wrench", 10);
+    
+    //Odebranie pozycji zadanej
     target_sub_ = create_subscription<geometry_msgs::msg::PoseStamped>(
       "command/pose", 10,
       [this](geometry_msgs::msg::PoseStamped::ConstSharedPtr msg) {
         target_ = *msg;
         have_target_ = true;
       });
-      
+    
+    
     odom_sub_ = create_subscription<nav_msgs::msg::Odometry>(
       "odom", rclcpp::SensorDataQoS(),
       std::bind(&QuadcopterController::on_odometry, this, std::placeholders::_1));
@@ -63,11 +71,13 @@ private:
     return std::clamp(value, -limit, limit);
   }
 
+  //sprowadza kąt do przedziału od -pi do pi
   static double wrap(double angle)
   {
     return std::atan2(std::sin(angle), std::cos(angle));
   }
 
+  //Konwersja kawterionu na katy Eulera
   static void to_rpy(
     const geometry_msgs::msg::Quaternion & q, double & roll, double & pitch, double & yaw)
   {

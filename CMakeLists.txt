@@ -34,7 +34,21 @@ ament_target_dependencies(lqr_controller geometry_msgs nav_msgs rclcpp)
 
 add_executable(mpc_controller src/mpc_controller.cpp)
 target_compile_features(mpc_controller PUBLIC cxx_std_17)
-ament_target_dependencies(mpc_controller geometry_msgs nav_msgs rclcpp)
+ament_target_dependencies(mpc_controller geometry_msgs nav_msgs rclcpp std_msgs)
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+  target_compile_options(mpc_controller PRIVATE -O3)
+endif()
+
+if(BUILD_TESTING)
+  enable_testing()
+  add_executable(nonlinear_mpc_test test/nonlinear_mpc_test.cpp)
+  target_compile_features(nonlinear_mpc_test PRIVATE cxx_std_17)
+  target_include_directories(nonlinear_mpc_test PRIVATE src)
+  if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(nonlinear_mpc_test PRIVATE -O3)
+  endif()
+  add_test(NAME nonlinear_mpc_test COMMAND nonlinear_mpc_test)
+endif()
 
 install(TARGETS gazebo_actuator
   ARCHIVE DESTINATION lib
